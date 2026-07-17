@@ -1,0 +1,66 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  admin
+  employee
+}
+
+enum ShiftStatus {
+  active
+  completed
+}
+
+model User {
+  id           String   @id @default(cuid())
+  fullName     String
+  phone        String?  @unique
+  login        String   @unique
+  passwordHash String
+  role         Role
+  isActive     Boolean  @default(true)
+  schedule     String   @default("По факту выхода")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions Session[]
+  shifts   Shift[]
+}
+
+model Session {
+  id        String   @id
+  userId    String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Shift {
+  id              String      @id @default(cuid())
+  employeeId      String
+  date            DateTime
+  startedAt       DateTime
+  endedAt         DateTime?
+  durationMinutes Int?
+  hourlyRate      Int
+  amount          Int?
+  status          ShiftStatus @default(active)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  employee User @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@index([startedAt])
+  @@index([status])
+}

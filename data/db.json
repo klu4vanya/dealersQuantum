@@ -1,0 +1,55 @@
+{
+  "sessions": {
+    "59d25704-3815-4fd1-9b24-bbbe1d54d703": "admin-1",
+    "af67d65a-56ea-4022-8cb9-87f0067950e5": "admin-1",
+    "64dfff51-9810-4c73-ba3a-1c8ee77f28f3": "admin-1"
+  },
+  "users": [
+    {
+      "id": "admin-1",
+      "fullName": "Администратор",
+      "phone": "+70000000000",
+      "login": "admin",
+      "password": "admin123",
+      "role": "admin",
+      "createdAt": "2026-07-09T00:00:00.000Z",
+      "isActive": true,
+      "schedule": "Пн-Вс, по факту выхода"
+    },
+    {
+      "id": "emp-1",
+      "fullName": "Иван Петров",
+      "phone": "+79990000001",
+      "login": "ivan",
+      "password": "1234",
+      "role": "employee",
+      "createdAt": "2026-07-09T00:00:00.000Z",
+      "isActive": true,
+      "schedule": "Пн-Пт, 10:00-19:00"
+    },
+    {
+      "id": "37e30a50-e757-4f49-b667-7284699683f8",
+      "fullName": "ddd",
+      "phone": "89055458993",
+      "login": "ddd",
+      "password": "ddd",
+      "role": "employee",
+      "createdAt": "2026-07-10T15:10:12.084Z",
+      "isActive": true,
+      "schedule": "По факту выхода"
+    }
+  ],
+  "shifts": [
+    {
+      "id": "14cabaec-ea86-41ed-855b-98c59eb9e2b5",
+      "employeeId": "emp-1",
+      "date": "2026-07-10",
+      "startedAt": "2026-07-10T15:10:53.350Z",
+      "endedAt": "2026-07-10T15:10:58.795Z",
+      "durationMinutes": 0,
+      "hourlyRate": 600,
+      "amount": 0,
+      "status": "completed"
+    }
+  ]
+}
