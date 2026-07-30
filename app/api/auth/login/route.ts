@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
+import { databaseNotConfiguredResponse } from "@/lib/api-errors";
 import { createSession } from "@/lib/auth";
 import { verifyPassword } from "@/lib/password";
 import { prisma } from "@/lib/prisma";
 import { publicUser } from "@/lib/stats";
 
 export async function POST(request: Request) {
+  const databaseError = databaseNotConfiguredResponse();
+  if (databaseError) return databaseError;
+
   const body = await request.json().catch(() => ({}));
   const login = String(body.login || "").trim();
   const password = String(body.password || "");

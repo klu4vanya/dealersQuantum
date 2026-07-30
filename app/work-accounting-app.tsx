@@ -158,6 +158,20 @@ export function WorkAccountingApp() {
     });
   }
 
+  async function addManualShift(event: FormEvent<HTMLFormElement>, employeeId: string) {
+    event.preventDefault();
+    const form = event.currentTarget;
+
+    await run(async () => {
+      await api(`/api/employees/${employeeId}/manual-shift`, {
+        method: "POST",
+        body: JSON.stringify(Object.fromEntries(new FormData(form).entries()))
+      });
+      form.reset();
+      await refresh();
+    });
+  }
+
   async function actionAndRefresh(path: string, method = "POST") {
     await run(async () => {
       await api(path, { method });
@@ -183,14 +197,13 @@ export function WorkAccountingApp() {
           </div>
           <div className="form-row">
             <label htmlFor="login">Логин или телефон</label>
-            <input id="login" name="login" autoComplete="username" defaultValue="admin" required />
+            <input id="login" name="login" autoComplete="username" required />
           </div>
           <div className="form-row">
             <label htmlFor="password">Пароль или код</label>
-            <input id="password" name="password" type="password" autoComplete="current-password" defaultValue="admin123" required />
+            <input id="password" name="password" type="password" autoComplete="current-password" required />
           </div>
           <button type="submit">Войти</button>
-          <div className="hint">Тестовый администратор: admin / admin123</div>
           <div className="error">{error}</div>
         </form>
       </main>
@@ -255,6 +268,7 @@ export function WorkAccountingApp() {
                     }
                   }}
                   onEdit={editEmployee}
+                  onManualShift={addManualShift}
                 />
               )) : <div className="hint">Сотрудников пока нет</div>}
             </div>
@@ -285,7 +299,8 @@ function EmployeeCard({
   onFinish,
   onDelete,
   onReset,
-  onEdit
+  onEdit,
+  onManualShift
 }: {
   employee: Employee;
   isOpen: boolean;
@@ -295,6 +310,7 @@ function EmployeeCard({
   onDelete: () => void;
   onReset: () => void;
   onEdit: (event: FormEvent<HTMLFormElement>, employeeId: string) => void;
+  onManualShift: (event: FormEvent<HTMLFormElement>, employeeId: string) => void;
 }) {
   const active = Boolean(employee.stats.activeShift);
   const rate = employee.stats.currentRate;
@@ -322,7 +338,12 @@ function EmployeeCard({
       </div>
       {isOpen && (
         <div className="details">
-          <EmployeeProfile employee={employee} onReset={onReset} onEdit={(event) => onEdit(event, employee.id)} />
+          <EmployeeProfile
+            employee={employee}
+            onReset={onReset}
+            onEdit={(event) => onEdit(event, employee.id)}
+            onManualShift={(event) => onManualShift(event, employee.id)}
+          />
         </div>
       )}
     </article>
@@ -333,12 +354,14 @@ function EmployeeProfile({
   employee,
   ownProfile = false,
   onReset,
-  onEdit
+  onEdit,
+  onManualShift
 }: {
   employee: Employee;
   ownProfile?: boolean;
   onReset: () => void;
   onEdit?: (event: FormEvent<HTMLFormElement>) => void;
+  onManualShift?: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const stats = employee.stats;
   const active = stats.activeShift;
@@ -360,6 +383,7 @@ function EmployeeProfile({
       </div>
       {active && <p className="hint">Активная смена началась: {formatDate(active.startedAt)}, ставка {active.hourlyRate} ₽/ч</p>}
       {!ownProfile && onEdit && <EditEmployeeForm employee={employee} onEdit={onEdit} />}
+      {!ownProfile && onManualShift && <ManualShiftForm employee={employee} onManualShift={onManualShift} />}
       <ShiftTable shifts={stats.shifts} />
     </section>
   );
@@ -376,6 +400,30 @@ function EditEmployeeForm({ employee, onEdit }: { employee: Employee; onEdit: (e
       </div>
       <textarea name="schedule" rows={2} defaultValue={employee.schedule || ""} placeholder="График работы" />
       <button type="submit">Сохранить данные</button>
+    </form>
+  );
+}
+
+function ManualShiftForm({
+  employee,
+  onManualShift
+}: {
+  employee: Employee;
+  onManualShift: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <form className="details form-grid" onSubmit={onManualShift}>
+      <div>
+        <h3>Добавить смену вручную</h3>
+        <div className="hint">Сумму можно указать вручную. Если оставить пустой, система рассчитает ее по ставке и времени.</div>
+      </div>
+      <div className="manual-grid">
+        <input name="startedAt" type="datetime-local" aria-label="Начало смены" required />
+        <input name="endedAt" type="datetime-local" aria-label="Конец смены" required />
+        <input name="hourlyRate" type="number" min="1" step="1" defaultValue={employee.stats.currentRate.rate} placeholder="Ставка ₽/час" required />
+        <input name="amount" type="number" min="0" step="1" placeholder="Сумма зарплаты ₽" />
+      </div>
+      <button type="submit">Добавить смену</button>
     </form>
   );
 }
