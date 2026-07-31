@@ -23,7 +23,8 @@
     "@prisma/client": "^6.2.1",
     "next": "^15.1.4",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "vercel": "^58.4.0"
   },
   "devDependencies": {
     "@types/node": "^20.17.16",
