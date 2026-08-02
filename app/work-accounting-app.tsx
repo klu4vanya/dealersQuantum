@@ -172,6 +172,20 @@ export function WorkAccountingApp() {
     });
   }
 
+  async function finishShiftManually(event: FormEvent<HTMLFormElement>, employeeId: string) {
+    event.preventDefault();
+    const form = event.currentTarget;
+
+    await run(async () => {
+      await api(`/api/employees/${employeeId}/finish-shift`, {
+        method: "POST",
+        body: JSON.stringify(Object.fromEntries(new FormData(form).entries()))
+      });
+      form.reset();
+      await refresh();
+    });
+  }
+
   async function actionAndRefresh(path: string, method = "POST") {
     await run(async () => {
       await api(path, { method });
@@ -269,6 +283,7 @@ export function WorkAccountingApp() {
                   }}
                   onEdit={editEmployee}
                   onManualShift={addManualShift}
+                  onManualFinish={finishShiftManually}
                 />
               )) : <div className="hint">Сотрудников пока нет</div>}
             </div>
@@ -300,7 +315,8 @@ function EmployeeCard({
   onDelete,
   onReset,
   onEdit,
-  onManualShift
+  onManualShift,
+  onManualFinish
 }: {
   employee: Employee;
   isOpen: boolean;
@@ -311,6 +327,7 @@ function EmployeeCard({
   onReset: () => void;
   onEdit: (event: FormEvent<HTMLFormElement>, employeeId: string) => void;
   onManualShift: (event: FormEvent<HTMLFormElement>, employeeId: string) => void;
+  onManualFinish: (event: FormEvent<HTMLFormElement>, employeeId: string) => void;
 }) {
   const active = Boolean(employee.stats.activeShift);
   const rate = employee.stats.currentRate;
@@ -343,6 +360,7 @@ function EmployeeCard({
             onReset={onReset}
             onEdit={(event) => onEdit(event, employee.id)}
             onManualShift={(event) => onManualShift(event, employee.id)}
+            onManualFinish={(event) => onManualFinish(event, employee.id)}
           />
         </div>
       )}
@@ -355,13 +373,15 @@ function EmployeeProfile({
   ownProfile = false,
   onReset,
   onEdit,
-  onManualShift
+  onManualShift,
+  onManualFinish
 }: {
   employee: Employee;
   ownProfile?: boolean;
   onReset: () => void;
   onEdit?: (event: FormEvent<HTMLFormElement>) => void;
   onManualShift?: (event: FormEvent<HTMLFormElement>) => void;
+  onManualFinish?: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const stats = employee.stats;
   const active = stats.activeShift;
@@ -382,6 +402,7 @@ function EmployeeProfile({
         <div className="stat"><span>Текущая ставка</span><strong>{stats.currentRate.rate} ₽/ч</strong></div>
       </div>
       {active && <p className="hint">Активная смена началась: {formatDate(active.startedAt)}, ставка {active.hourlyRate} ₽/ч</p>}
+      {!ownProfile && active && onManualFinish && <ManualFinishForm activeShift={active} onManualFinish={onManualFinish} />}
       {!ownProfile && onEdit && <EditEmployeeForm employee={employee} onEdit={onEdit} />}
       {!ownProfile && onManualShift && <ManualShiftForm employee={employee} onManualShift={onManualShift} />}
       <ShiftTable shifts={stats.shifts} />
@@ -400,6 +421,37 @@ function EditEmployeeForm({ employee, onEdit }: { employee: Employee; onEdit: (e
       </div>
       <textarea name="schedule" rows={2} defaultValue={employee.schedule || ""} placeholder="График работы" />
       <button type="submit">Сохранить данные</button>
+    </form>
+  );
+}
+
+function toDateTimeLocal(value: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  const offsetMs = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function ManualFinishForm({
+  activeShift,
+  onManualFinish
+}: {
+  activeShift: Shift;
+  onManualFinish: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <form className="details form-grid compact-form" onSubmit={onManualFinish}>
+      <div>
+        <h3>Завершить активную смену вручную</h3>
+        <div className="hint">Если забыли нажать «Закончил», укажите фактическое время окончания. Сумма может быть рассчитана автоматически.</div>
+      </div>
+      <div className="manual-grid">
+        <input name="endedAt" type="datetime-local" aria-label="Фактическое окончание смены" defaultValue={toDateTimeLocal(new Date().toISOString())} required />
+        <input name="amount" type="number" min="0" step="1" placeholder="Сумма зарплаты ₽" />
+        <input value={`${activeShift.hourlyRate} ₽/ч`} aria-label="Ставка активной смены" readOnly />
+        <input value={`Начало: ${formatDate(activeShift.startedAt)}`} aria-label="Начало активной смены" readOnly />
+      </div>
+      <button type="submit">Завершить по указанному времени</button>
     </form>
   );
 }
