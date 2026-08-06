@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, Fragment, useEffect, useState } from "react";
 
 type Shift = {
   id: string;
@@ -10,6 +10,7 @@ type Shift = {
   durationMinutes: number | null;
   hourlyRate: number;
   amount: number | null;
+  paidAt: string | null;
   status: "active" | "completed";
 };
 
@@ -28,6 +29,8 @@ type EmployeeStats = {
   totalCompletedShifts: number;
   monthlyShiftCount: number;
   monthlyAmount: number;
+  unpaidAmount: number;
+  monthlyUnpaidAmount: number;
   currentRate: {
     rate: number;
     completedCount: number;
@@ -55,13 +58,39 @@ const dateTime = new Intl.DateTimeFormat("ru-RU", {
   minute: "2-digit"
 });
 
+const dateOnly = new Intl.DateTimeFormat("ru-RU", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric"
+});
+
 function formatDate(value: string | null) {
   return value ? dateTime.format(new Date(value)) : "—";
+}
+
+function formatDateOnly(value: string | null) {
+  return value ? dateOnly.format(new Date(value)) : "—";
 }
 
 function formatDuration(minutes: number | null) {
   if (minutes == null) return "идет сейчас";
   return `${Math.floor(minutes / 60)} ч ${minutes % 60} мин`;
+}
+
+function formDataToJson(form: HTMLFormElement) {
+  const payload: Record<string, FormDataEntryValue> = {};
+  const datetimeFields = new Set(["startedAt", "endedAt"]);
+
+  new FormData(form).forEach((value, key) => {
+    if (typeof value === "string" && datetimeFields.has(key) && value) {
+      payload[key] = new Date(value).toISOString();
+      return;
+    }
+
+    payload[key] = value;
+  });
+
+  return payload;
 }
 
 async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -165,7 +194,7 @@ export function WorkAccountingApp() {
     await run(async () => {
       await api(`/api/employees/${employeeId}/manual-shift`, {
         method: "POST",
-        body: JSON.stringify(Object.fromEntries(new FormData(form).entries()))
+        body: JSON.stringify(formDataToJson(form))
       });
       form.reset();
       await refresh();
@@ -179,9 +208,22 @@ export function WorkAccountingApp() {
     await run(async () => {
       await api(`/api/employees/${employeeId}/finish-shift`, {
         method: "POST",
-        body: JSON.stringify(Object.fromEntries(new FormData(form).entries()))
+        body: JSON.stringify(formDataToJson(form))
       });
       form.reset();
+      await refresh();
+    });
+  }
+
+  async function editShift(event: FormEvent<HTMLFormElement>, employeeId: string, shiftId: string) {
+    event.preventDefault();
+    const form = event.currentTarget;
+
+    await run(async () => {
+      await api(`/api/employees/${employeeId}/shifts/${shiftId}`, {
+        method: "PATCH",
+        body: JSON.stringify(formDataToJson(form))
+      });
       await refresh();
     });
   }
@@ -281,9 +323,15 @@ export function WorkAccountingApp() {
                       actionAndRefresh(`/api/employees/${employee.id}/reset`);
                     }
                   }}
+                  onResetPayouts={() => {
+                    if (confirm("Отметить все невыплаченные завершенные смены сотрудника как оплаченные? История смен сохранится.")) {
+                      actionAndRefresh(`/api/employees/${employee.id}/reset-payouts`);
+                    }
+                  }}
                   onEdit={editEmployee}
                   onManualShift={addManualShift}
                   onManualFinish={finishShiftManually}
+                  onEditShift={editShift}
                 />
               )) : <div className="hint">Сотрудников пока нет</div>}
             </div>
@@ -314,9 +362,11 @@ function EmployeeCard({
   onFinish,
   onDelete,
   onReset,
+  onResetPayouts,
   onEdit,
   onManualShift,
-  onManualFinish
+  onManualFinish,
+  onEditShift
 }: {
   employee: Employee;
   isOpen: boolean;
@@ -325,9 +375,11 @@ function EmployeeCard({
   onFinish: () => void;
   onDelete: () => void;
   onReset: () => void;
+  onResetPayouts: () => void;
   onEdit: (event: FormEvent<HTMLFormElement>, employeeId: string) => void;
   onManualShift: (event: FormEvent<HTMLFormElement>, employeeId: string) => void;
   onManualFinish: (event: FormEvent<HTMLFormElement>, employeeId: string) => void;
+  onEditShift: (event: FormEvent<HTMLFormElement>, employeeId: string, shiftId: string) => void;
 }) {
   const active = Boolean(employee.stats.activeShift);
   const rate = employee.stats.currentRate;
@@ -358,9 +410,11 @@ function EmployeeCard({
           <EmployeeProfile
             employee={employee}
             onReset={onReset}
+            onResetPayouts={onResetPayouts}
             onEdit={(event) => onEdit(event, employee.id)}
             onManualShift={(event) => onManualShift(event, employee.id)}
             onManualFinish={(event) => onManualFinish(event, employee.id)}
+            onEditShift={(event, shiftId) => onEditShift(event, employee.id, shiftId)}
           />
         </div>
       )}
@@ -372,16 +426,20 @@ function EmployeeProfile({
   employee,
   ownProfile = false,
   onReset,
+  onResetPayouts,
   onEdit,
   onManualShift,
-  onManualFinish
+  onManualFinish,
+  onEditShift
 }: {
   employee: Employee;
   ownProfile?: boolean;
   onReset: () => void;
+  onResetPayouts?: () => void;
   onEdit?: (event: FormEvent<HTMLFormElement>) => void;
   onManualShift?: (event: FormEvent<HTMLFormElement>) => void;
   onManualFinish?: (event: FormEvent<HTMLFormElement>) => void;
+  onEditShift?: (event: FormEvent<HTMLFormElement>, shiftId: string) => void;
 }) {
   const stats = employee.stats;
   const active = stats.activeShift;
@@ -393,19 +451,23 @@ function EmployeeProfile({
           <h2>{employee.fullName}</h2>
           <div className="hint">{employee.schedule || "График не указан"}</div>
         </div>
-        <button className="danger" onClick={onReset}>Сбросить статистику</button>
+        <div className="actions">
+          {!ownProfile && onResetPayouts && <button className="secondary" onClick={onResetPayouts}>Зарплата выплачена</button>}
+          <button className="danger" onClick={onReset}>Сбросить статистику</button>
+        </div>
       </div>
       <div className="stats">
         <div className="stat"><span>Всего смен</span><strong>{stats.totalCompletedShifts}</strong></div>
         <div className="stat"><span>Смен за месяц</span><strong>{stats.monthlyShiftCount}</strong></div>
         <div className="stat"><span>Заработок за месяц</span><strong>{money.format(stats.monthlyAmount)}</strong></div>
+        <div className="stat"><span>К выплате</span><strong>{money.format(stats.unpaidAmount)}</strong></div>
         <div className="stat"><span>Текущая ставка</span><strong>{stats.currentRate.rate} ₽/ч</strong></div>
       </div>
       {active && <p className="hint">Активная смена началась: {formatDate(active.startedAt)}, ставка {active.hourlyRate} ₽/ч</p>}
       {!ownProfile && active && onManualFinish && <ManualFinishForm activeShift={active} onManualFinish={onManualFinish} />}
       {!ownProfile && onEdit && <EditEmployeeForm employee={employee} onEdit={onEdit} />}
       {!ownProfile && onManualShift && <ManualShiftForm employee={employee} onManualShift={onManualShift} />}
-      <ShiftTable shifts={stats.shifts} />
+      <ShiftTable shifts={stats.shifts} onEditShift={!ownProfile ? onEditShift : undefined} />
     </section>
   );
 }
@@ -480,7 +542,15 @@ function ManualShiftForm({
   );
 }
 
-function ShiftTable({ shifts }: { shifts: Shift[] }) {
+function ShiftTable({
+  shifts,
+  onEditShift
+}: {
+  shifts: Shift[];
+  onEditShift?: (event: FormEvent<HTMLFormElement>, shiftId: string) => void;
+}) {
+  const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
+
   return (
     <div className="details table-wrap">
       <table>
@@ -493,21 +563,48 @@ function ShiftTable({ shifts }: { shifts: Shift[] }) {
             <th>Ставка</th>
             <th>Сумма</th>
             <th>Статус</th>
+            {onEditShift && <th>Действия</th>}
           </tr>
         </thead>
         <tbody>
           {shifts.length ? shifts.map((shift) => (
-            <tr key={shift.id}>
-              <td>{new Date(shift.startedAt).toISOString().slice(0, 10)}</td>
-              <td>{formatDate(shift.startedAt)}</td>
-              <td>{formatDate(shift.endedAt)}</td>
-              <td>{formatDuration(shift.durationMinutes)}</td>
-              <td>{shift.hourlyRate} ₽/ч</td>
-              <td>{shift.amount == null ? "—" : money.format(shift.amount)}</td>
-              <td>{shift.status === "active" ? "активная" : "завершена"}</td>
-            </tr>
+            <Fragment key={shift.id}>
+              <tr>
+                <td>{formatDateOnly(shift.startedAt)}</td>
+                <td>{formatDate(shift.startedAt)}</td>
+                <td>{formatDate(shift.endedAt)}</td>
+                <td>{formatDuration(shift.durationMinutes)}</td>
+                <td>{shift.hourlyRate} ₽/ч</td>
+                <td>{shift.amount == null ? "—" : money.format(shift.amount)}</td>
+                <td>
+                  {shift.status === "active" ? "активная" : shift.paidAt ? "оплачена" : "к выплате"}
+                </td>
+                {onEditShift && (
+                  <td>
+                    {shift.status === "completed" && (
+                      <button className="secondary" onClick={() => setEditingShiftId(editingShiftId === shift.id ? null : shift.id)}>
+                        {editingShiftId === shift.id ? "Закрыть" : "Редактировать"}
+                      </button>
+                    )}
+                  </td>
+                )}
+              </tr>
+              {onEditShift && editingShiftId === shift.id && (
+                <tr key={`${shift.id}-edit`}>
+                  <td colSpan={8}>
+                    <form className="manual-grid" onSubmit={(event) => onEditShift(event, shift.id)}>
+                      <input name="startedAt" type="datetime-local" defaultValue={toDateTimeLocal(shift.startedAt)} aria-label="Новое начало смены" required />
+                      <input name="endedAt" type="datetime-local" defaultValue={toDateTimeLocal(shift.endedAt)} aria-label="Новый конец смены" required />
+                      <input name="hourlyRate" type="number" min="1" step="1" defaultValue={shift.hourlyRate} aria-label="Ставка смены" required />
+                      <input name="amount" type="number" min="0" step="1" defaultValue={shift.amount ?? ""} placeholder="Сумма зарплаты ₽" />
+                      <button type="submit">Сохранить смену</button>
+                    </form>
+                  </td>
+                </tr>
+              )}
+            </Fragment>
           )) : (
-            <tr><td colSpan={7}>Истории смен пока нет</td></tr>
+            <tr><td colSpan={onEditShift ? 8 : 7}>Истории смен пока нет</td></tr>
           )}
         </tbody>
       </table>
