@@ -55,6 +55,7 @@ model Shift {
   durationMinutes Int?
   hourlyRate      Int
   amount          Int?
+  paidAt          DateTime?
   status          ShiftStatus @default(active)
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
@@ -63,5 +64,6 @@ model Shift {
 
   @@index([employeeId])
   @@index([startedAt])
+  @@index([paidAt])
   @@index([status])
 }
