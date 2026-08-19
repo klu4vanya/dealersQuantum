@@ -109,6 +109,7 @@ export function WorkAccountingApp() {
   const [rateTiers, setRateTiers] = useState<RateTier[]>([]);
   const [error, setError] = useState("");
   const [openCards, setOpenCards] = useState<Record<string, boolean>>({});
+  const [employeeSearch, setEmployeeSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
 
   async function refresh() {
@@ -228,6 +229,10 @@ export function WorkAccountingApp() {
     });
   }
 
+  async function deleteShift(employeeId: string, shiftId: string) {
+    await actionAndRefresh(`/api/employees/${employeeId}/shifts/${shiftId}`, "DELETE");
+  }
+
   async function actionAndRefresh(path: string, method = "POST") {
     await run(async () => {
       await api(path, { method });
@@ -267,6 +272,15 @@ export function WorkAccountingApp() {
   }
 
   const isAdmin = me.role === "admin";
+  const normalizedSearch = employeeSearch.trim().toLowerCase();
+  const visibleEmployees = normalizedSearch
+    ? employees.filter((employee) => {
+        return [employee.fullName, employee.phone || "", employee.login]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedSearch);
+      })
+    : employees;
 
   return (
     <main className="shell">
@@ -304,8 +318,17 @@ export function WorkAccountingApp() {
               <h2>Сотрудники</h2>
               <div className="hint">{rateTiers.map((tier) => `${tier.shifts}+ смен: ${tier.rate} ₽/ч`).join(" · ")}</div>
             </div>
+            <div className="search-row">
+              <input
+                value={employeeSearch}
+                onChange={(event) => setEmployeeSearch(event.target.value)}
+                placeholder="Поиск сотрудника по имени"
+                type="search"
+              />
+              {employeeSearch && <button className="secondary" onClick={() => setEmployeeSearch("")}>Очистить</button>}
+            </div>
             <div className="employees">
-              {employees.length ? employees.map((employee) => (
+              {visibleEmployees.length ? visibleEmployees.map((employee) => (
                 <EmployeeCard
                   key={employee.id}
                   employee={employee}
@@ -332,8 +355,9 @@ export function WorkAccountingApp() {
                   onManualShift={addManualShift}
                   onManualFinish={finishShiftManually}
                   onEditShift={editShift}
+                  onDeleteShift={deleteShift}
                 />
-              )) : <div className="hint">Сотрудников пока нет</div>}
+              )) : <div className="hint">{employees.length ? "Сотрудники не найдены" : "Сотрудников пока нет"}</div>}
             </div>
           </section>
         </>
@@ -366,7 +390,8 @@ function EmployeeCard({
   onEdit,
   onManualShift,
   onManualFinish,
-  onEditShift
+  onEditShift,
+  onDeleteShift
 }: {
   employee: Employee;
   isOpen: boolean;
@@ -380,6 +405,7 @@ function EmployeeCard({
   onManualShift: (event: FormEvent<HTMLFormElement>, employeeId: string) => void;
   onManualFinish: (event: FormEvent<HTMLFormElement>, employeeId: string) => void;
   onEditShift: (event: FormEvent<HTMLFormElement>, employeeId: string, shiftId: string) => void;
+  onDeleteShift: (employeeId: string, shiftId: string) => void;
 }) {
   const active = Boolean(employee.stats.activeShift);
   const rate = employee.stats.currentRate;
@@ -415,6 +441,7 @@ function EmployeeCard({
             onManualShift={(event) => onManualShift(event, employee.id)}
             onManualFinish={(event) => onManualFinish(event, employee.id)}
             onEditShift={(event, shiftId) => onEditShift(event, employee.id, shiftId)}
+            onDeleteShift={(shiftId) => onDeleteShift(employee.id, shiftId)}
           />
         </div>
       )}
@@ -430,7 +457,8 @@ function EmployeeProfile({
   onEdit,
   onManualShift,
   onManualFinish,
-  onEditShift
+  onEditShift,
+  onDeleteShift
 }: {
   employee: Employee;
   ownProfile?: boolean;
@@ -440,6 +468,7 @@ function EmployeeProfile({
   onManualShift?: (event: FormEvent<HTMLFormElement>) => void;
   onManualFinish?: (event: FormEvent<HTMLFormElement>) => void;
   onEditShift?: (event: FormEvent<HTMLFormElement>, shiftId: string) => void;
+  onDeleteShift?: (shiftId: string) => void;
 }) {
   const stats = employee.stats;
   const active = stats.activeShift;
@@ -467,7 +496,11 @@ function EmployeeProfile({
       {!ownProfile && active && onManualFinish && <ManualFinishForm activeShift={active} onManualFinish={onManualFinish} />}
       {!ownProfile && onEdit && <EditEmployeeForm employee={employee} onEdit={onEdit} />}
       {!ownProfile && onManualShift && <ManualShiftForm employee={employee} onManualShift={onManualShift} />}
-      <ShiftTable shifts={stats.shifts} onEditShift={!ownProfile ? onEditShift : undefined} />
+      <ShiftTable
+        shifts={stats.shifts}
+        onEditShift={!ownProfile ? onEditShift : undefined}
+        onDeleteShift={!ownProfile ? onDeleteShift : undefined}
+      />
     </section>
   );
 }
@@ -544,10 +577,12 @@ function ManualShiftForm({
 
 function ShiftTable({
   shifts,
-  onEditShift
+  onEditShift,
+  onDeleteShift
 }: {
   shifts: Shift[];
   onEditShift?: (event: FormEvent<HTMLFormElement>, shiftId: string) => void;
+  onDeleteShift?: (shiftId: string) => void;
 }) {
   const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
 
@@ -563,7 +598,7 @@ function ShiftTable({
             <th>Ставка</th>
             <th>Сумма</th>
             <th>Статус</th>
-            {onEditShift && <th>Действия</th>}
+            {(onEditShift || onDeleteShift) && <th>Действия</th>}
           </tr>
         </thead>
         <tbody>
@@ -579,13 +614,27 @@ function ShiftTable({
                 <td>
                   {shift.status === "active" ? "активная" : shift.paidAt ? "оплачена" : "к выплате"}
                 </td>
-                {onEditShift && (
+                {(onEditShift || onDeleteShift) && (
                   <td>
-                    {shift.status === "completed" && (
-                      <button className="secondary" onClick={() => setEditingShiftId(editingShiftId === shift.id ? null : shift.id)}>
-                        {editingShiftId === shift.id ? "Закрыть" : "Редактировать"}
-                      </button>
-                    )}
+                    <div className="table-actions">
+                      {onEditShift && shift.status === "completed" && (
+                        <button className="secondary table-action" onClick={() => setEditingShiftId(editingShiftId === shift.id ? null : shift.id)}>
+                          {editingShiftId === shift.id ? "Закрыть" : "Редактировать"}
+                        </button>
+                      )}
+                      {onDeleteShift && (
+                        <button
+                          className="danger table-action"
+                          onClick={() => {
+                            if (confirm("Удалить эту смену? Зарплата и счетчик смен пересчитаются.")) {
+                              onDeleteShift(shift.id);
+                            }
+                          }}
+                        >
+                          Удалить
+                        </button>
+                      )}
+                    </div>
                   </td>
                 )}
               </tr>
@@ -604,7 +653,7 @@ function ShiftTable({
               )}
             </Fragment>
           )) : (
-            <tr><td colSpan={onEditShift ? 8 : 7}>Истории смен пока нет</td></tr>
+            <tr><td colSpan={onEditShift || onDeleteShift ? 8 : 7}>Истории смен пока нет</td></tr>
           )}
         </tbody>
       </table>

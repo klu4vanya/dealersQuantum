@@ -240,6 +240,13 @@ textarea {
   margin-top: 14px;
 }
 
+.search-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
 .details {
   margin-top: 14px;
   border-top: 1px solid var(--line);
@@ -287,6 +294,17 @@ th {
   color: var(--muted);
   font-size: 13px;
   font-weight: 600;
+}
+
+.table-action {
+  min-height: 32px;
+  padding: 0 10px;
+}
+
+.table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .error {
@@ -356,6 +374,10 @@ th {
   .actions {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .search-row {
+    grid-template-columns: 1fr;
   }
 
   .actions button,

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
 import { databaseNotConfiguredResponse } from "@/lib/api-errors";
+import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { calculateShift } from "@/lib/rates";
 import { buildEmployeeSummary } from "@/lib/stats";
@@ -21,15 +21,22 @@ function parseMoney(value: unknown) {
   return Number.isFinite(amount) && amount >= 0 ? amount : null;
 }
 
-export async function PATCH(request: Request, { params }: Params) {
+async function requireAdmin() {
   const databaseError = databaseNotConfiguredResponse();
-  if (databaseError) return databaseError;
+  if (databaseError) return { error: databaseError };
 
   const admin = await getCurrentUser();
 
   if (admin?.role !== "admin") {
-    return NextResponse.json({ error: "Недостаточно прав" }, { status: 403 });
+    return { error: NextResponse.json({ error: "Недостаточно прав" }, { status: 403 }) };
   }
+
+  return { admin };
+}
+
+export async function PATCH(request: Request, { params }: Params) {
+  const auth = await requireAdmin();
+  if ("error" in auth) return auth.error;
 
   const { id, shiftId } = await params;
   const body = await request.json().catch(() => ({}));
@@ -79,4 +86,23 @@ export async function PATCH(request: Request, { params }: Params) {
   });
 
   return NextResponse.json({ employee: buildEmployeeSummary(employee) });
+}
+
+export async function DELETE(_request: Request, { params }: Params) {
+  const auth = await requireAdmin();
+  if ("error" in auth) return auth.error;
+
+  const { id, shiftId } = await params;
+  const result = await prisma.shift.deleteMany({
+    where: {
+      id: shiftId,
+      employeeId: id
+    }
+  });
+
+  if (result.count === 0) {
+    return NextResponse.json({ error: "Смена не найдена" }, { status: 404 });
+  }
+
+  return NextResponse.json({ ok: true });
 }
