@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getCurrentRate } from "@/lib/rates";
+import { getEffectiveRate } from "@/lib/rates";
 import { buildEmployeeSummary } from "@/lib/stats";
 
 type Params = {
@@ -30,7 +30,7 @@ export async function POST(_request: Request, { params }: Params) {
   }
 
   const completedCount = employee.shifts.filter((shift) => shift.status === "completed").length;
-  const rateInfo = getCurrentRate(completedCount);
+  const rateInfo = getEffectiveRate(completedCount, employee.hourlyRateOverride);
   const now = new Date();
 
   await prisma.shift.create({

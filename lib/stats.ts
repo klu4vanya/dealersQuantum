@@ -1,5 +1,5 @@
 import { Shift, User } from "@prisma/client";
-import { getCurrentRate } from "./rates";
+import { getEffectiveRate } from "./rates";
 
 export function publicUser(user: User) {
   const { passwordHash, ...safeUser } = user;
@@ -32,7 +32,7 @@ export function buildEmployeeSummary(user: User & { shifts: Shift[] }) {
       monthlyAmount: monthlyShifts.reduce((sum, shift) => sum + (shift.amount || 0), 0),
       unpaidAmount: unpaidCompletedShifts.reduce((sum, shift) => sum + (shift.amount || 0), 0),
       monthlyUnpaidAmount: monthlyUnpaidShifts.reduce((sum, shift) => sum + (shift.amount || 0), 0),
-      currentRate: getCurrentRate(completedShifts.length),
+      currentRate: getEffectiveRate(completedShifts.length, user.hourlyRateOverride),
       shifts: sortedShifts
     }
   };

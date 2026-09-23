@@ -22,6 +22,29 @@ export function getCurrentRate(completedCount: number) {
   };
 }
 
+export function isAllowedRate(rate: number) {
+  return RATE_TIERS.some((tier) => tier.rate === rate);
+}
+
+export function getEffectiveRate(completedCount: number, hourlyRateOverride?: number | null) {
+  const automaticRate = getCurrentRate(completedCount);
+
+  if (hourlyRateOverride && isAllowedRate(hourlyRateOverride)) {
+    return {
+      ...automaticRate,
+      automaticRate: automaticRate.rate,
+      rate: hourlyRateOverride,
+      isManual: true
+    };
+  }
+
+  return {
+    ...automaticRate,
+    automaticRate: automaticRate.rate,
+    isManual: false
+  };
+}
+
 export function calculateShift(startedAt: Date, endedAt: Date, hourlyRate: number) {
   const durationMinutes = Math.max(0, Math.floor((endedAt.getTime() - startedAt.getTime()) / 60000));
   const amount = Math.round((durationMinutes * hourlyRate) / 60);

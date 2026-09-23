@@ -21,6 +21,7 @@ type User = {
   login: string;
   role: "admin" | "employee";
   schedule: string;
+  hourlyRateOverride: number | null;
   stats?: EmployeeStats;
 };
 
@@ -35,8 +36,10 @@ type EmployeeStats = {
     rate: number;
     completedCount: number;
     tierStart: number;
+    automaticRate: number;
     nextTier: { shifts: number; rate: number } | null;
     shiftsToNextTier: number;
+    isManual: boolean;
   };
   shifts: Shift[];
 };
@@ -183,6 +186,19 @@ export function WorkAccountingApp() {
       await api(`/api/employees/${employeeId}`, {
         method: "PATCH",
         body: JSON.stringify(payload)
+      });
+      await refresh();
+    });
+  }
+
+  async function updateEmployeeRate(event: FormEvent<HTMLFormElement>, employeeId: string) {
+    event.preventDefault();
+    const form = event.currentTarget;
+
+    await run(async () => {
+      await api(`/api/employees/${employeeId}`, {
+        method: "PATCH",
+        body: JSON.stringify(Object.fromEntries(new FormData(form).entries()))
       });
       await refresh();
     });
@@ -357,6 +373,7 @@ export function WorkAccountingApp() {
                     }
                   }}
                   onEdit={editEmployee}
+                  onRateChange={updateEmployeeRate}
                   onManualShift={addManualShift}
                   onManualFinish={finishShiftManually}
                   onEditShift={editShift}
@@ -393,6 +410,7 @@ function EmployeeCard({
   onDelete,
   onReset,
   onEdit,
+  onRateChange,
   onManualShift,
   onManualFinish,
   onEditShift,
@@ -407,6 +425,7 @@ function EmployeeCard({
   onDelete: () => void;
   onReset: () => void;
   onEdit: (event: FormEvent<HTMLFormElement>, employeeId: string) => void;
+  onRateChange: (event: FormEvent<HTMLFormElement>, employeeId: string) => void;
   onManualShift: (event: FormEvent<HTMLFormElement>, employeeId: string) => void;
   onManualFinish: (event: FormEvent<HTMLFormElement>, employeeId: string) => void;
   onEditShift: (event: FormEvent<HTMLFormElement>, employeeId: string, shiftId: string) => void;
@@ -416,6 +435,7 @@ function EmployeeCard({
   const active = Boolean(employee.stats.activeShift);
   const rate = employee.stats.currentRate;
   const next = rate.nextTier ? `до ${rate.nextTier.rate} ₽/ч осталось ${rate.shiftsToNextTier} смен` : "максимальная ставка";
+  const rateMode = rate.isManual ? "выбрана вручную" : "авто";
 
   return (
     <article className="employee-card">
@@ -427,7 +447,7 @@ function EmployeeCard({
             <span className={`pill ${active ? "active" : ""}`}>{active ? "работает" : "не работает"}</span>
             <span className="pill">{employee.stats.monthlyShiftCount} смен за месяц</span>
             <span className="pill">{money.format(employee.stats.monthlyAmount)}</span>
-            <span className="pill warning">{rate.rate} ₽/ч, {next}</span>
+            <span className="pill warning">{rate.rate} ₽/ч, {rateMode}, {next}</span>
           </div>
         </div>
       </div>
@@ -443,6 +463,7 @@ function EmployeeCard({
             employee={employee}
             onReset={onReset}
             onEdit={(event) => onEdit(event, employee.id)}
+            onRateChange={(event) => onRateChange(event, employee.id)}
             onManualShift={(event) => onManualShift(event, employee.id)}
             onManualFinish={(event) => onManualFinish(event, employee.id)}
             onEditShift={(event, shiftId) => onEditShift(event, employee.id, shiftId)}
@@ -460,6 +481,7 @@ function EmployeeProfile({
   ownProfile = false,
   onReset,
   onEdit,
+  onRateChange,
   onManualShift,
   onManualFinish,
   onEditShift,
@@ -470,6 +492,7 @@ function EmployeeProfile({
   ownProfile?: boolean;
   onReset: () => void;
   onEdit?: (event: FormEvent<HTMLFormElement>) => void;
+  onRateChange?: (event: FormEvent<HTMLFormElement>) => void;
   onManualShift?: (event: FormEvent<HTMLFormElement>) => void;
   onManualFinish?: (event: FormEvent<HTMLFormElement>) => void;
   onEditShift?: (event: FormEvent<HTMLFormElement>, shiftId: string) => void;
@@ -499,6 +522,7 @@ function EmployeeProfile({
       </div>
       {active && <p className="hint">Активная смена началась: {formatDate(active.startedAt)}, ставка {active.hourlyRate} ₽/ч</p>}
       {!ownProfile && active && onManualFinish && <ManualFinishForm activeShift={active} onManualFinish={onManualFinish} />}
+      {!ownProfile && onRateChange && <EmployeeRateForm employee={employee} onRateChange={onRateChange} />}
       {!ownProfile && onEdit && <EditEmployeeForm employee={employee} onEdit={onEdit} />}
       {!ownProfile && onManualShift && <ManualShiftForm employee={employee} onManualShift={onManualShift} />}
       <ShiftTable
@@ -508,6 +532,35 @@ function EmployeeProfile({
         onToggleShiftPayout={!ownProfile ? onToggleShiftPayout : undefined}
       />
     </section>
+  );
+}
+
+function EmployeeRateForm({
+  employee,
+  onRateChange
+}: {
+  employee: Employee;
+  onRateChange: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <form className="details form-grid compact-form" onSubmit={onRateChange}>
+      <div>
+        <h3>Ставка сотрудника</h3>
+        <div className="hint">Можно оставить автоматический расчет по сменам или выбрать ставку вручную для новых смен.</div>
+      </div>
+      <div className="rate-grid">
+        <select name="hourlyRateOverride" defaultValue={employee.hourlyRateOverride ?? "auto"} aria-label="Ставка сотрудника">
+          <option value="auto">Автоматически: {employee.stats.currentRate.automaticRate} ₽/ч</option>
+          <option value="600">600 ₽/ч</option>
+          <option value="700">700 ₽/ч</option>
+          <option value="800">800 ₽/ч</option>
+          <option value="900">900 ₽/ч</option>
+          <option value="950">950 ₽/ч</option>
+          <option value="1000">1000 ₽/ч</option>
+        </select>
+        <button type="submit">Сохранить ставку</button>
+      </div>
+    </form>
   );
 }
 

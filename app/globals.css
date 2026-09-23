@@ -26,6 +26,7 @@ body {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
@@ -63,6 +64,7 @@ button.danger {
 }
 
 input,
+select,
 textarea {
   width: 100%;
   min-height: 42px;
@@ -267,6 +269,12 @@ textarea {
   gap: 10px;
 }
 
+.rate-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
 .compact-form h3 {
   margin: 0 0 6px;
   font-size: 17px;
@@ -321,7 +329,8 @@ th {
 @media (max-width: 820px) {
   .stats,
   .edit-grid,
-  .manual-grid {
+  .manual-grid,
+  .rate-grid {
     grid-template-columns: 1fr;
   }
 
@@ -402,6 +411,7 @@ th {
   }
 
   input,
+  select,
   textarea {
     min-height: 44px;
     font-size: 16px;

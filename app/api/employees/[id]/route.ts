@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { hashPassword } from "@/lib/password";
 import { prisma } from "@/lib/prisma";
+import { isAllowedRate } from "@/lib/rates";
 import { buildEmployeeSummary } from "@/lib/stats";
 
 type Params = {
@@ -22,7 +23,7 @@ export async function PATCH(request: Request, { params }: Params) {
 
   const { id } = await params;
   const body = await request.json().catch(() => ({}));
-  const data: Record<string, string | null> = {};
+  const data: Record<string, string | number | null> = {};
 
   for (const field of ["fullName", "login", "schedule"]) {
     if (body[field] !== undefined) data[field] = String(body[field]).trim();
@@ -34,6 +35,20 @@ export async function PATCH(request: Request, { params }: Params) {
 
   if (body.password) {
     data.passwordHash = hashPassword(String(body.password));
+  }
+
+  if (body.hourlyRateOverride !== undefined) {
+    if (body.hourlyRateOverride === "" || body.hourlyRateOverride === null || body.hourlyRateOverride === "auto") {
+      data.hourlyRateOverride = null;
+    } else {
+      const rate = Number(body.hourlyRateOverride);
+
+      if (!Number.isFinite(rate) || !isAllowedRate(rate)) {
+        return NextResponse.json({ error: "Выберите ставку из доступного списка" }, { status: 400 });
+      }
+
+      data.hourlyRateOverride = Math.round(rate);
+    }
   }
 
   try {
